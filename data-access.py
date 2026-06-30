@@ -12,14 +12,19 @@ In plain terms:
   ✓ We read two folders, locally, on YOUR computer:
         ~/.claude/history.jsonl      ~/.claude/projects/    (Claude Code)
         ~/.codex/sessions/                                  (Codex)
-  ✓ From those we extract ONLY counts: how many prompts, how many tokens,
-    which model, and the date. Word counts for "please"/greetings/curses.
+  ✓ For Cursor (which doesn't log tokens to disk) we read ONLY your cached
+    Cursor session token locally and use it to fetch your usage from
+    cursor.com — the same data the Cursor dashboard shows you. The token
+    never leaves your machine except to Cursor's own servers.
+  ✓ From all of these we extract ONLY counts: how many prompts, how many
+    tokens, which model, and the date. Word counts for please/greetings/curses.
   ✓ Real project paths are replaced with project-1, project-2, … before
     anything is sent.
 
   ✗ We never read your source code or file contents.
   ✗ We never read or send the text of your prompts/messages (only word counts).
   ✗ We never send real project names or file paths.
+  ✗ We never send your Cursor session token to us, or store it.
 
 Everything below runs locally; only the resulting numbers are uploaded.
 """
@@ -75,6 +80,28 @@ def read_token_usage(session_file):
         # entry == {"type": "assistant", "message": {"model", "usage"}, ...}
         # we keep: model, usage.input_tokens/output_tokens/cache_*, timestamp
         # we keep nothing else from the message.
+        pass
+
+
+def read_cursor_usage(cursor_db):
+    """Cursor doesn't log tokens to disk, so we read your usage from Cursor's
+    own dashboard API — exactly what cursor.com shows you when you log in.
+
+    1) Read ONLY the cached session token from Cursor's local SQLite DB:
+           SELECT value FROM ItemTable WHERE key='cursorAuth/accessToken'
+       It authenticates you to cursor.com and NEVER leaves your machine except
+       to Cursor's own servers (its issuer). We never send it to us, store it,
+       or read anything else from that database.
+
+    2) Call cursor.com's usage endpoint and keep ONLY, per event:
+           model name, token counts (input/output/cache), and the date.
+       No prompts, no code, no file names — numbers only.
+    """
+    token = read_value(cursor_db, "cursorAuth/accessToken")  # local read only
+    cookie = build_cursor_cookie(token)                      # "<sub>::<jwt>"
+    for event in fetch_cursor_usage_events(cookie):
+        # event["tokenUsage"] == {inputTokens, outputTokens, cacheReadTokens, …}
+        # we keep: model, those token counts, and the date. Nothing else.
         pass
 
 

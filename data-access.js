@@ -11,14 +11,19 @@
  *   ✓ We read two folders, locally, on YOUR computer:
  *         ~/.claude/history.jsonl    ~/.claude/projects/   (Claude Code)
  *         ~/.codex/sessions/                               (Codex)
- *   ✓ From those we extract ONLY counts: how many prompts, how many tokens,
- *     which model, and the date. Word counts for "please"/greetings/curses.
+ *   ✓ For Cursor (which doesn't log tokens to disk) we read ONLY your cached
+ *     Cursor session token locally and use it to fetch your usage from
+ *     cursor.com — the same data the Cursor dashboard shows you. The token
+ *     never leaves your machine except to Cursor's own servers.
+ *   ✓ From all of these we extract ONLY counts: how many prompts, how many
+ *     tokens, which model, and the date. Word counts for please/greetings/curses.
  *   ✓ Real project paths are replaced with project-1, project-2, … before
  *     anything is sent.
  *
  *   ✗ We never read your source code or file contents.
  *   ✗ We never read or send the text of your prompts/messages (only counts).
  *   ✗ We never send real project names or file paths.
+ *   ✗ We never send your Cursor session token to us, or store it.
  *
  * Everything below runs locally; only the resulting numbers are uploaded.
  */
@@ -60,6 +65,24 @@ function readTokenUsage(entry) {
   // entry === { type: "assistant", message: { model, usage }, timestamp }
   // we keep: model, usage.input_tokens/output_tokens/cache_*, timestamp.
   // we keep nothing else from the message — not the conversation content.
+}
+
+function readCursorUsage(cursorDb) {
+  // Cursor doesn't log tokens to disk, so we read your usage from Cursor's own
+  // dashboard API — exactly what cursor.com shows you when you log in.
+  //
+  // 1) Read ONLY the cached session token from Cursor's local SQLite DB:
+  //      SELECT value FROM ItemTable WHERE key='cursorAuth/accessToken'
+  //    It authenticates you to cursor.com and NEVER leaves your machine except
+  //    to Cursor's own servers (its issuer). We never send it to us or store it,
+  //    and we read nothing else from that database.
+  const token = readValue(cursorDb, "cursorAuth/accessToken"); // local read only
+  const cookie = buildCursorCookie(token); // "<sub>::<jwt>"
+  for (const event of fetchCursorUsageEvents(cookie)) {
+    // event.tokenUsage === { inputTokens, outputTokens, cacheReadTokens, … }
+    // we keep: model, those token counts, and the date. Nothing else —
+    // no prompts, no code, no file names.
+  }
 }
 
 function anonymizeProjects(perProject) {
